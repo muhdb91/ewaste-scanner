@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI E-Waste Extractor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f4f4f4; margin: 0; }
+        video { width: 90%; max-width: 500px; border-radius: 10px; border: 3px solid #333; margin-top: 10px; }
+        .controls { margin: 20px; }
+        button { padding: 15px 25px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background: #28a745; color: white; margin: 5px; }
+        #status { font-weight: bold; color: #555; }
+    </style>
+</head>
+<body>
+    <h2>♻️ E-Waste AI Scanner</h2>
+    <p id="status">Initializing Camera...</p>
+    <video id="webcam" autoplay playsinline></video>
+    
+    <div class="controls">
+        <button onclick="identifyBody()">1. Scan Body (AI)</button>
+        <button onclick="scanLabel()">2. Read Label (OCR)</button>
+        <button onclick="sendToSheet()" style="background:#007bff">3. Save to Sheets</button>
+    </div>
+
+    <div id="results" style="background: white; padding: 15px; margin: 20px; border-radius: 10px;">
+        <p><b>Detected Item:</b> <span id="item-name">---</span></p>
+        <p><b>Extracted Data:</b> <span id="label-text">---</span></p>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        let model;
+
+        // Load Object Detection Model
+        cocoSsd.load().then(lModel => {
+            model = lModel;
+            document.getElementById('status').innerText = "AI Ready!";
+        });
+
+        // Setup Camera
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => { video.srcObject = stream; });
+
+        // Node 1: Identify what the item is
+        async function identifyBody() {
+            const predictions = await model.detect(video);
+            if (predictions.length > 0) {
+                document.getElementById('item-name').innerText = predictions[0].class;
+            } else {
+                alert("No item detected. Try moving back.");
+            }
+        }
+
+        // Node 2: Extract text from the label
+        async function scanLabel() {
+            document.getElementById('status').innerText = "Reading Label... please wait.";
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            Tesseract.recognize(canvas, 'eng').then(({ data: { text } }) => {
+                document.getElementById('label-text').innerText = text;
+                document.getElementById('status').innerText = "Label Scanned!";
+            });
+        }
+
+        // Send to your Google Sheet Script
+        async function sendToSheet() {
+            const webAppUrl = "https://script.google.com/macros/s/AKfycbyCRCW3MTIsmCHGu6Jrbn6WkWxjolcXLeyX1DDzRGMABR30pbflTWgg5bZ4P4q77M9-/exec";
+            const payload = {
+                item_type: document.getElementById('item-name').innerText,
+                label_info: document.getElementById('label-text').innerText
+            };
+
+            await fetch(webAppUrl, {
+                method: 'POST',
+                mode: 'no-cors', 
+                cache: 'no-cache',
+                body: JSON.stringify(payload)
+            });
+            alert("Sent to Google Sheets!");
+        }
+    </script>
+</body>
+</html>
